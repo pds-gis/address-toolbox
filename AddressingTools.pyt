@@ -242,6 +242,33 @@ def check_for_clipped_raster(raster_name):
     return
 
 
+def update_bia():
+    '''
+    Intersects the address point feature class with the building inspection area polygon feature class to update the BIA
+    attribute field in the address point feature class.
+    :return:
+    '''
+
+    '''
+    Pseudo-code -- Update building inspector area attribute values in address point feature class
+    1. Check if the addressing point feature class exists
+    2. If true, perform spatial join on addressing point features with building inspector area polygon features
+    3. Update the BIA attribute field with the joined building inspector area numbers
+    4. Output message through ArcGIS Pro that the building inspection area values have been successfully updated
+    '''
+
+    return
+
+
+def export_to_csv():
+    '''
+    Exports a CSV file of address point feature attributes, based on a user-selected list of AMANDA permit project
+    ID values. Then call a stored procedure (or function) in AMANDA to begin the folder creation process.
+    :return:
+    '''
+    return
+
+
 # TESTING
 # raster_name = "19-109012 Carlson SP.tif"
 # folder_name = "19-109012"
