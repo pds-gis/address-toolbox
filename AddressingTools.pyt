@@ -78,6 +78,70 @@ class ProcessSitePlanImageTool:
         return
 
 
+class AmandaUpdateTool:
+    def __init__(self):
+        """Define the tool (tool name is the name of the class)."""
+        self.label = "AMANDA Update Tool"
+        self.description = ("Performs several processing steps to update the AMANDA database with new address records.")
+
+    def getParameterInfo(self):
+        """Define the tool parameters."""
+        param0 = arcpy.Parameter(
+            displayName="Input 01",
+            name="input_01",
+            datatype="GPRasterLayer",
+            parameterType="Required",
+            direction="Input"
+        )
+
+        param1 = arcpy.Parameter(
+            displayName="Input 02",
+            name="input_02",
+            datatype="GPString",
+            parameterType="Required",
+            direction="Input"
+        )
+
+        param2 = arcpy.Parameter(
+            displayName="Input 03",
+            name="input_03",
+            datatype="GPString",
+            parameterType="Optional",
+            direction="Input"
+        )
+
+        params = [param0, param1, param2]
+        return params
+
+    def isLicensed(self):
+        """Set whether the tool is licensed to execute."""
+        return True
+
+    def updateParameters(self, parameters):
+        """Modify the values and properties of parameters before internal
+        validation is performed.  This method is called whenever a parameter
+        has been changed."""
+        return
+
+    def updateMessages(self, parameters):
+        """Modify the messages created by internal validation for each tool
+        parameter. This method is called after internal validation."""
+        return
+
+    def execute(self, params, messages):
+        """The source code of the tool."""
+        raster_layer = params[0].valueAsText
+        project_number = params[1].valueAsText
+        address_report_id = params[2].valueAsText
+        process_site_plan(raster_layer, project_number, address_report_id)
+        return
+
+    def postExecute(self, parameters):
+        """This method takes place after outputs are processed and
+        added to the display."""
+        return
+
+
 def process_site_plan(raster_name, folder_name, address_report_id):
     # Set the workspace
     arcpy.env.workspace = \
