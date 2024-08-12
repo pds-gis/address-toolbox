@@ -84,7 +84,8 @@ class AmandaUpdateTool:
         self.label = "AMANDA Update Tool"
         self.description = "Performs several processing steps to update the AMANDA database with new address records."
         self.sde_connection = r"\\snoco\gis\plng\GDB_connections_PAG\SCD_GDBA\SCD_GDBA@SCD_GIS_PROD.sde"
-        self.feature_class_name = "SCD_GIS_PROD.SCD_GDBA.ADDRESSING__Address_Points_PDS"
+        self.address_fc = "SCD_GIS_PROD.SCD_GDBA.ADDRESSING__Address_Points_PDS"
+        self.bia_fc = "SCD_GIS_PROD.SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
 
     def getParameterInfo(self):
         """Define the tool parameters."""
@@ -116,7 +117,7 @@ class AmandaUpdateTool:
 
     def execute(self, params, messages):
         """The source code of the tool."""
-        update_bia(self.sde_connection, self.feature_class_name)
+        update_bia(self.sde_connection, self.address_fc)
         return
 
     def postExecute(self, parameters):
@@ -225,34 +226,54 @@ def check_for_clipped_raster(raster_name):
     return
 
 
-def update_bia(sde_connection, fc_name):
-    '''
-    Intersects the address point feature class with the building inspection area polygon feature class to update the BIA
-    attribute field in the address point feature class.
-    :return:
-    '''
+def update_bia(sde_connection, address_fc_name, bia_fc_name):
+    """
+    Updates the address point feature class using a spatial join with the building inspection area polygon feature class
+    to update the BIA attribute field in the address point feature class.
+    :return: none
+    """
 
-    '''
-    Pseudo-code -- Update building inspector area attribute values in address point feature class
+    # Mapping from LABEL descriptions to BIA codes
+    label_to_code = {
+        "Area 2": 2,
+        "Area 3": 3,
+        "Area 4": 4,
+        "Area 5": 5,
+        "Area 6": 6,
+        "Area 8": 8
+    }
 
-    2. If true, perform spatial join on addressing point features with building inspector area polygon features
-    3. Update the BIA attribute field with the joined building inspector area numbers
-    4. Output message through ArcGIS Pro that the building inspection area values have been successfully updated
-    '''
     # Check if the addressing point feature class exists
-    check_feature_class_exists(sde_connection, fc_name)
+    if check_feature_class_exists(sde_connection, address_fc_name):
+        joined_fc = arcpy.SpatialJoin_analysis(
+           target_features=f"{sde_connection}/{address_fc_name}",
+           join_features=bia_fc_name,
+           out_feature_class="in_memory/joined_output",
+           join_type="KEEP_COMMON",
+           match_option="INTERSECT"
+        )
 
+        with arcpy.da.UpdateCursor(joined_fc, ["BIA", "LABEL"]) as cursor:
+            for row in cursor:
+                # Set 'BIA' to the code corresponding to 'LABEL', defaulting to 0 if not found
+                row[0] = label_to_code.get(row[1], 0)  # Default to 0 if no match found
+                cursor.updateRow(row)
+
+        arcpy.AddMessage("BIA attribute field updated successfully.")
+    else:
+        arcpy.AddMessage("Processing halted due to missing address point feature class.")
     return
+
 
 def check_feature_class_exists(sde_connection, fc_name):
     """Checks if the feature class exists in the SDE database."""
     feature_class_path = f"{sde_connection}/{fc_name}"
     if arcpy.Exists(feature_class_path):
         arcpy.AddMessage(f"Feature class '{fc_name}' found.")
+        return True
     else:
         arcpy.AddError(f"Feature class '{fc_name}' not found.")
-
-    return
+        return False
 
 
 def export_to_csv():
