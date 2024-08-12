@@ -7,18 +7,18 @@ class Toolbox:
         """Define the toolbox (the name of the toolbox is the name of the
         .pyt file)."""
         self.label = "Addressing Toolbox"
-        self.alias = "Addressing toolbox"
+        self.alias = "Addressing Toolbox"
 
         # List of tool classes associated with this toolbox
-        self.tools = [ProcessSitePlanImageTool]
+        self.tools = [ProcessSitePlanImageTool, AmandaUpdateTool]
 
 
 class ProcessSitePlanImageTool:
     def __init__(self):
         """Define the tool (tool name is the name of the class)."""
         self.label = "Process Site Plan Image Tool"
-        self.description = ("Clips a georeferenced site plan image file with a user-digitized polygon boundary, then appends"
-                            "that clipped raster dataset to the Site Plan mosaic dataset.")
+        self.description = "Clips a georeferenced site plan image file with a user-digitized polygon boundary, then " \
+                           "appends that clipped raster dataset to the Site Plan mosaic dataset."
 
     def getParameterInfo(self):
         """Define the tool parameters."""
@@ -82,35 +82,21 @@ class AmandaUpdateTool:
     def __init__(self):
         """Define the tool (tool name is the name of the class)."""
         self.label = "AMANDA Update Tool"
-        self.description = ("Performs several processing steps to update the AMANDA database with new address records.")
+        self.description = "Performs several processing steps to update the AMANDA database with new address records."
+        self.sde_connection = r"\\snoco\gis\plng\GDB_connections_PAG\SCD_GDBA\SCD_GDBA@SCD_GIS_PROD.sde"
+        self.feature_class_name = "SCD_GIS_PROD.SCD_GDBA.ADDRESSING__Address_Points_PDS"
 
     def getParameterInfo(self):
         """Define the tool parameters."""
-        param0 = arcpy.Parameter(
-            displayName="Input 01",
-            name="input_01",
-            datatype="GPRasterLayer",
-            parameterType="Required",
-            direction="Input"
-        )
+        # param0 = arcpy.Parameter(
+        #     displayName="Input 01",
+        #     name="input_01",
+        #     datatype="GPRasterLayer",
+        #     parameterType="Required",
+        #     direction="Input"
+        # )
 
-        param1 = arcpy.Parameter(
-            displayName="Input 02",
-            name="input_02",
-            datatype="GPString",
-            parameterType="Required",
-            direction="Input"
-        )
-
-        param2 = arcpy.Parameter(
-            displayName="Input 03",
-            name="input_03",
-            datatype="GPString",
-            parameterType="Optional",
-            direction="Input"
-        )
-
-        params = [param0, param1, param2]
+        params = []
         return params
 
     def isLicensed(self):
@@ -130,10 +116,7 @@ class AmandaUpdateTool:
 
     def execute(self, params, messages):
         """The source code of the tool."""
-        raster_layer = params[0].valueAsText
-        project_number = params[1].valueAsText
-        address_report_id = params[2].valueAsText
-        process_site_plan(raster_layer, project_number, address_report_id)
+        update_bia(self.sde_connection, self.feature_class_name)
         return
 
     def postExecute(self, parameters):
@@ -242,7 +225,7 @@ def check_for_clipped_raster(raster_name):
     return
 
 
-def update_bia():
+def update_bia(sde_connection, fc_name):
     '''
     Intersects the address point feature class with the building inspection area polygon feature class to update the BIA
     attribute field in the address point feature class.
@@ -251,11 +234,23 @@ def update_bia():
 
     '''
     Pseudo-code -- Update building inspector area attribute values in address point feature class
-    1. Check if the addressing point feature class exists
+
     2. If true, perform spatial join on addressing point features with building inspector area polygon features
     3. Update the BIA attribute field with the joined building inspector area numbers
     4. Output message through ArcGIS Pro that the building inspection area values have been successfully updated
     '''
+    # Check if the addressing point feature class exists
+    check_feature_class_exists(sde_connection, fc_name)
+
+    return
+
+def check_feature_class_exists(sde_connection, fc_name):
+    """Checks if the feature class exists in the SDE database."""
+    feature_class_path = f"{sde_connection}/{fc_name}"
+    if arcpy.Exists(feature_class_path):
+        arcpy.AddMessage(f"Feature class '{fc_name}' found.")
+    else:
+        arcpy.AddError(f"Feature class '{fc_name}' not found.")
 
     return
 
