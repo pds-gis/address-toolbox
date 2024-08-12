@@ -10,7 +10,7 @@ class Toolbox:
         self.alias = "Addressing Toolbox"
 
         # List of tool classes associated with this toolbox
-        self.tools = [ProcessSitePlanImageTool, AmandaUpdateTool]
+        self.tools = [ProcessSitePlanImageTool, BIAUpdateTool]
 
 
 class ProcessSitePlanImageTool:
@@ -78,14 +78,14 @@ class ProcessSitePlanImageTool:
         return
 
 
-class AmandaUpdateTool:
+class BIAUpdateTool:
     def __init__(self):
         """Define the tool (tool name is the name of the class)."""
-        self.label = "AMANDA Update Tool"
-        self.description = "Performs several processing steps to update the AMANDA database with new address records."
-        self.sde_connection = r"\\snoco\gis\plng\GDB_connections_PAG\SCD_GDBA\SCD_GDBA@SCD_GIS_PROD.sde"
-        self.address_fc = "SCD_GIS_PROD.SCD_GDBA.ADDRESSING__Address_Points_PDS"
-        self.bia_fc = "SCD_GIS_PROD.SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
+        self.label = "Building Inspection Area Update Tool"
+        self.description = "Updates the addressing point dataset with intersecting building inspection areas codes."
+        self.sde_connection = r"\\snoco\gis\plng\GDB_connections_PAG\SCD_GDBA\SCD_GDBA@SCD_GIS_PROD_TEST.sde"
+        self.address_fc = "SCD_GIS_PROD_TEST.SCD_GDBA.ADDRESSING__Address_Points_PDS"
+        self.bia_fc = "SCD_GIS_PROD_TEST.SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
 
     def getParameterInfo(self):
         """Define the tool parameters."""
@@ -117,7 +117,7 @@ class AmandaUpdateTool:
 
     def execute(self, params, messages):
         """The source code of the tool."""
-        update_bia(self.sde_connection, self.address_fc)
+        update_bia(self.sde_connection, self.address_fc, self.bia_fc)
         return
 
     def postExecute(self, parameters):
@@ -244,13 +244,30 @@ def update_bia(sde_connection, address_fc_name, bia_fc_name):
     }
 
     # Check if the addressing point feature class exists
+    address_path = f"{sde_connection}/{address_fc_name}"
     if check_feature_class_exists(sde_connection, address_fc_name):
+
+        # Create field mappings to control the output fields
+        field_mappings = arcpy.FieldMappings()
+
+        # Add fields from the addressing feature class
+        field_map = arcpy.FieldMap()
+        field_map.addInputField(address_path, "BIA")
+        field_mappings.addFieldMap(field_map)
+
+        # Add the 'LABEL' field from the planning feature class
+        field_map = arcpy.FieldMap()
+        field_map.addInputField(bia_fc_name, "LABEL")
+        field_mappings.addFieldMap(field_map)
+
+        # Perform spatial join with specified field mappings
         joined_fc = arcpy.SpatialJoin_analysis(
-           target_features=f"{sde_connection}/{address_fc_name}",
-           join_features=bia_fc_name,
-           out_feature_class="in_memory/joined_output",
-           join_type="KEEP_COMMON",
-           match_option="INTERSECT"
+            target_features=address_path,
+            join_features=bia_fc_name,
+            out_feature_class="in_memory/joined_output",
+            join_type="KEEP_COMMON",
+            match_option="INTERSECT",
+            field_mapping=field_mappings
         )
 
         with arcpy.da.UpdateCursor(joined_fc, ["BIA", "LABEL"]) as cursor:
@@ -258,6 +275,12 @@ def update_bia(sde_connection, address_fc_name, bia_fc_name):
                 # Set 'BIA' to the code corresponding to 'LABEL', defaulting to 0 if not found
                 row[0] = label_to_code.get(row[1], 0)  # Default to 0 if no match found
                 cursor.updateRow(row)
+
+        # Delete the original address point feature class
+        arcpy.Delete_management(address_path)
+
+        # Copy the updated in-memory feature class to the original location
+        arcpy.CopyFeatures_management(joined_fc, address_path)
 
         arcpy.AddMessage("BIA attribute field updated successfully.")
     else:
