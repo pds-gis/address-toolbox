@@ -1,0 +1,184 @@
+# -*- coding: utf-8 -*-
+import arcpy
+
+
+class Toolbox:
+    def __init__(self):
+        """Define the toolbox (the name of the toolbox is the name of the
+        .pyt file)."""
+        self.label = "Addressing Toolbox"
+        self.alias = "Addressing toolbox"
+
+        # List of tool classes associated with this toolbox
+        self.tools = [ProcessSitePlanImageTool]
+
+
+class ProcessSitePlanImageTool:
+    def __init__(self):
+        """Define the tool (tool name is the name of the class)."""
+        self.label = "Process Site Plan Image Tool"
+        self.description = ("Clips a georeferenced site plan image file with a user-digitized polygon boundary, then appends"
+                            "that clipped raster dataset to the Site Plan mosaic dataset.")
+
+    def getParameterInfo(self):
+        """Define the tool parameters."""
+        param0 = arcpy.Parameter(
+            displayName="Georeferenced site plan image layer",
+            name="in_raster",
+            datatype="GPRasterLayer",
+            parameterType="Required",
+            direction="Input"
+        )
+
+        param1 = arcpy.Parameter(
+            displayName="AMANDA project number",
+            name="project_number",
+            datatype="GPString",
+            parameterType="Required",
+            direction="Input"
+        )
+
+        param2 = arcpy.Parameter(
+            displayName="Address Report ID",
+            name="address_report_id",
+            datatype="GPString",
+            parameterType="Optional",
+            direction="Input"
+        )
+
+        params = [param0, param1, param2]
+        return params
+
+    def isLicensed(self):
+        """Set whether the tool is licensed to execute."""
+        return True
+
+    def updateParameters(self, parameters):
+        """Modify the values and properties of parameters before internal
+        validation is performed.  This method is called whenever a parameter
+        has been changed."""
+        return
+
+    def updateMessages(self, parameters):
+        """Modify the messages created by internal validation for each tool
+        parameter. This method is called after internal validation."""
+        return
+
+    def execute(self, params, messages):
+        """The source code of the tool."""
+        raster_layer = params[0].valueAsText
+        project_number = params[1].valueAsText
+        address_report_id = params[2].valueAsText
+        process_site_plan(raster_layer, project_number, address_report_id)
+        return
+
+    def postExecute(self, parameters):
+        """This method takes place after outputs are processed and
+        added to the display."""
+        return
+
+
+def process_site_plan(raster_name, folder_name, address_report_id):
+    # Set the workspace
+    arcpy.env.workspace = \
+        r"\\snoco\gis\plng\carto\Projects\Addressing\Addressing_Permit_Tech_Template\Mosaic\SitePlanMosaic.gdb"
+    arcpy.env.overwriteOutput = True
+    arcpy.env.outputCoordinateSystem = "SitePlan_clip"
+    p = arcpy.mp.ArcGISProject('CURRENT')
+    m = p.listMaps('Map')[0]
+    layers = m.listLayers()
+
+    # Define the input Site Plan polygon clip feature class
+    polygon_layer_name = "Site Plan polygon clip"
+
+    # Check if the Site Plan polygon clip feature class exists and if it has features:
+    polygon_lyr_data_src = None
+    arcpy.RecalculateFeatureClassExtent_management(
+        in_features=polygon_layer_name,
+        store_extent=False)
+    for layer in layers:
+        if layer == polygon_layer_name:
+            arcpy.AddMessage(f"{polygon_layer_name} found in Table of Contents...")
+            check_for_features(layer)
+            polygon_lyr_data_src = layer.dataSource
+
+    # Define the input raster layer that is georeferenced and ready to be clipped
+    raster_layer = m.listLayers(raster_name)[0]
+    if raster_layer is None:
+        arcpy.AddError(f"The georeferenced raster layer {raster_name} cannot be found in the Table of Contents!")
+        return
+
+    # Make copy of georeferenced raster layer to memory and rename
+    clip_in_raster_lyr = f"memory\\clip_{clean_raster_name(raster_layer.name)}"
+    arcpy.CopyRaster_management(in_raster=raster_layer, out_rasterdataset=clip_in_raster_lyr)
+
+    # Remove white spaces from the AMANDA project folder name input string
+    clip_out_raster_lyr = clean_raster_name(folder_name)
+    clip_out_raster_lyr = f"clip_{clip_out_raster_lyr}"
+
+    # Clip the georeferenced raster layer with the Site Plan polygon clip feature class
+    arcpy.AddMessage("Clipping the georeferenced site plan raster layer...")
+    check_for_clipped_raster(clip_out_raster_lyr) # check if the clipped raster exists in the GDB, and delete if it is
+    arcpy.Clip_management(in_raster=clip_in_raster_lyr,
+                          out_raster=clip_out_raster_lyr,
+                          rectangle="#",
+                          in_template_dataset=polygon_layer_name,
+                          nodata_value="#",
+                          clipping_geometry="ClippingGeometry")
+
+    # Add the clipped raster to the Site Plan mosaic dataset
+    arcpy.AddMessage(f"Appending {clip_in_raster_lyr} to the mosaic dataset...")
+    mosaic_dataset = "SitePlans"
+    arcpy.AddRastersToMosaicDataset_management(in_mosaic_dataset=mosaic_dataset,
+                                               raster_type="Raster Dataset",
+                                               input_path=clip_out_raster_lyr,
+                                               duplicate_items_action="OVERWRITE_DUPLICATES")
+
+    # Update the Address Report ID column
+    if address_report_id:
+        with arcpy.da.UpdateCursor(in_table=mosaic_dataset, field_names=['Name', 'AddressReportID']) as cursor:
+            for row in cursor:
+                if row[0] == clip_out_raster_lyr:
+                    row[1] = address_report_id
+                cursor.updateRow(row)
+
+    # Remove all existing polygon features from the Site Plan polygon clip feature class
+    arcpy.AddMessage("Emptying the Site Plan polygon clip layer...")
+    arcpy.DeleteFeatures_management(polygon_layer_name)
+
+    return
+
+
+def clean_raster_name(input_string):
+    return input_string.replace("-", "_").replace(" ", "_")
+
+
+def check_for_features(layer_name):
+    polygon_count = arcpy.GetCount_management(layer_name)[0]
+    if int(polygon_count) == 1:
+        arcpy.AddMessage(f"The feature class {layer_name} has one feature...")
+        return
+    elif int(polygon_count) == 0:
+        arcpy.AddError(
+            f"No features found in {layer_name}! Please add a feature before running the tool...")
+        return
+    else:
+        arcpy.AddWarning(
+            f"More than one feature was found in {layer_name}. There should only be one feature available when running"
+            f"this tool...")
+        return
+
+
+def check_for_clipped_raster(raster_name):
+    raster_list = arcpy.ListRasters("*", "GRID")
+    for raster in raster_list:
+        if raster == raster_name:
+            arcpy.Delete_management(raster)
+    arcpy.AddMessage(f'{raster_name} found in mosaic geodatabase. Deleting now...')
+    return
+
+
+# TESTING
+# raster_name = "19-109012 Carlson SP.tif"
+# folder_name = "19-109012"
+# process_site_plan(raster_name, folder_name)
