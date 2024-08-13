@@ -245,46 +245,44 @@ def update_bia(sde_connection, address_fc_name, bia_fc_name):
 
     # Check if the addressing point feature class exists
     address_path = f"{sde_connection}/{address_fc_name}"
+    bia_path = f"{sde_connection}/{bia_fc_name}"
     if check_feature_class_exists(sde_connection, address_fc_name):
-
-        # Create field mappings to control the output fields
-        field_mappings = arcpy.FieldMappings()
-
-        # Add fields from the addressing feature class
-        field_map = arcpy.FieldMap()
-        field_map.addInputField(address_path, "BIA")
-        field_mappings.addFieldMap(field_map)
-
-        # Add the 'LABEL' field from the planning feature class
-        field_map = arcpy.FieldMap()
-        field_map.addInputField(bia_fc_name, "LABEL")
-        field_mappings.addFieldMap(field_map)
+        # Retrieve list of attribute fields from the BIA feature class
+        fields_to_delete = [field.name for field in arcpy.ListFields(bia_path) if field.name != 'SHAPE'
+                            and field.name != 'OBJECTID']
 
         # Perform spatial join with specified field mappings
         joined_fc = arcpy.SpatialJoin_analysis(
             target_features=address_path,
-            join_features=bia_fc_name,
+            join_features=bia_path,
             out_feature_class="in_memory/joined_output",
             join_type="KEEP_COMMON",
-            match_option="INTERSECT",
-            field_mapping=field_mappings
+            match_option="INTERSECT"
         )
+        arcpy.AddMessage("BIA polygon features joined to address point features...")
 
         with arcpy.da.UpdateCursor(joined_fc, ["BIA", "LABEL"]) as cursor:
             for row in cursor:
                 # Set 'BIA' to the code corresponding to 'LABEL', defaulting to 0 if not found
                 row[0] = label_to_code.get(row[1], 0)  # Default to 0 if no match found
                 cursor.updateRow(row)
+        arcpy.AddMessage("Address point features updated with BIA values...")
+
+        # Delete the unwanted attribute fields from joined feature class
+        arcpy.DeleteField_management(joined_fc, fields_to_delete)
+        arcpy.AddMessage("Deleted joined attribute fields originating from BIA feature class...")
 
         # Delete the original address point feature class
         arcpy.Delete_management(address_path)
+        arcpy.AddMessage("Deleted the address point feature class...")
 
         # Copy the updated in-memory feature class to the original location
         arcpy.CopyFeatures_management(joined_fc, address_path)
+        arcpy.AddMessage("Copied over new address point feature class with updated BIA values...")
 
-        arcpy.AddMessage("BIA attribute field updated successfully.")
+        arcpy.AddMessage("BIA attribute field updated successfully!")
     else:
-        arcpy.AddMessage("Processing halted due to missing address point feature class.")
+        arcpy.AddMessage("Processing halted due to missing address point feature class!")
     return
 
 
