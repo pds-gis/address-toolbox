@@ -86,6 +86,7 @@ class BIAUpdateTool:
         self.sde_connection = r"\\snoco\gis\plng\GDB_connections_PAG\SCD_GDBA\SCD_GDBA@SCD_GIS_PROD_TEST.sde"
         self.address_fc = "SCD_GIS_PROD_TEST.SCD_GDBA.ADDRESSING__Address_Points_PDS"
         self.bia_fc = "SCD_GIS_PROD_TEST.SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
+        self.user_list = ["SNOCO\\SCD_GIS_Addressing", "SNOCO\\PDSGISEditor"]
 
     def getParameterInfo(self):
         """Define the tool parameters."""
@@ -117,7 +118,7 @@ class BIAUpdateTool:
 
     def execute(self, params, messages):
         """The source code of the tool."""
-        update_bia(self.sde_connection, self.address_fc, self.bia_fc)
+        update_bia(self.sde_connection, self.address_fc, self.bia_fc, self.user_list)
         return
 
     def postExecute(self, parameters):
@@ -226,20 +227,22 @@ def check_for_clipped_raster(raster_name):
     return
 
 
-def update_bia(sde_connection, address_fc_name, bia_fc_name):
+def update_bia(sde_connection, address_fc_name, bia_fc_name, user_list):
     """
     Updates the address point feature class using a spatial join with the building inspection area polygon feature class
     to update the BIA attribute field in the address point feature class.
     :return: none
     """
 
-    # Mapping from LABEL descriptions to BIA codes
+    # Mapping from LABEL descriptions to BIA codes to use domain values
     label_to_code = {
+        "Area 1": 1,
         "Area 2": 2,
         "Area 3": 3,
         "Area 4": 4,
         "Area 5": 5,
         "Area 6": 6,
+        "Area 7": 7,
         "Area 8": 8
     }
 
@@ -280,6 +283,9 @@ def update_bia(sde_connection, address_fc_name, bia_fc_name):
         arcpy.CopyFeatures_management(joined_fc, address_path)
         arcpy.AddMessage("Copied over new address point feature class with updated BIA values...")
 
+        # Update privileges
+        set_privileges(address_path, user_list)
+
         arcpy.AddMessage("BIA attribute field updated successfully!")
     else:
         arcpy.AddMessage("Processing halted due to missing address point feature class!")
@@ -295,6 +301,15 @@ def check_feature_class_exists(sde_connection, fc_name):
     else:
         arcpy.AddError(f"Feature class '{fc_name}' not found.")
         return False
+
+
+def set_privileges(fc_path, user_list):
+    if arcpy.Exists(fc_path):
+        arcpy.AddMessage("Updating privileges for addressing points...")
+        for user in user_list:
+            arcpy.ChangePrivileges_management(fc_path, user, "GRANT", "GRANT")
+        arcpy.AddMessage("Privileges updated successfully...")
+    return
 
 
 def export_to_csv():
