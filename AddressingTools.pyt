@@ -83,22 +83,21 @@ class BIAUpdateTool:
         """Define the tool (tool name is the name of the class)."""
         self.label = "Building Inspection Area Update Tool"
         self.description = "Updates the addressing point dataset with intersecting building inspection areas codes."
-        self.sde_connection = r"\\snoco\gis\plng\GDB_connections_PAG\SCD_GDBA\SCD_GDBA@SCD_GIS_PROD_TEST.sde"
-        self.address_fc = "SCD_GIS_PROD_TEST.SCD_GDBA.ADDRESSING__Address_Points_PDS"
-        self.bia_fc = "SCD_GIS_PROD_TEST.SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
-        self.user_list = ["SNOCO\\SCD_GIS_Addressing", "SNOCO\\PDSGISEditor"]
 
     def getParameterInfo(self):
         """Define the tool parameters."""
-        # param0 = arcpy.Parameter(
-        #     displayName="Input 01",
-        #     name="input_01",
-        #     datatype="GPRasterLayer",
-        #     parameterType="Required",
-        #     direction="Input"
-        # )
+        param0 = arcpy.Parameter(
+            displayName="Choose the database environment to run the tool",
+            name="env",
+            datatype="GPString",
+            parameterType="Required",
+            direction="Input"
+        )
 
-        params = []
+        param0.filter.type = "ValueList"
+        param0.filter.list = ["PROD", "PROD_TEST"]
+
+        params = [param0]
         return params
 
     def isLicensed(self):
@@ -118,7 +117,12 @@ class BIAUpdateTool:
 
     def execute(self, params, messages):
         """The source code of the tool."""
-        update_bia(self.sde_connection, self.address_fc, self.bia_fc, self.user_list)
+        db = params[0].valueAsText
+        sde_connection = f"\\\snoco\gis\plng\GDB_connections_PAG\SCD_GDBA\SCD_GDBA@SCD_GIS_{db}.sde"
+        address_fc = f"SCD_GIS_{db}.SCD_GDBA.ADDRESSING__Address_Points_PDS"
+        bia_fc = f"SCD_GIS_{db}.SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
+        user_list = ["SNOCO\\SCD_GIS_Addressing", "SNOCO\\PDSGISEditor"]
+        update_bia(sde_connection, address_fc, bia_fc, user_list)
         return
 
     def postExecute(self, parameters):
@@ -247,8 +251,9 @@ def update_bia(sde_connection, address_fc_name, bia_fc_name, user_list):
     }
 
     # Check if the addressing point feature class exists
-    address_path = f"{sde_connection}/{address_fc_name}"
-    bia_path = f"{sde_connection}/{bia_fc_name}"
+    address_path = f"{sde_connection}\{address_fc_name}"
+    bia_path = f"{sde_connection}\{bia_fc_name}"
+    arcpy.AddMessage(f"address_path: {address_path}\nbia_path: {bia_path}")
     if check_feature_class_exists(sde_connection, address_fc_name):
         # Retrieve list of attribute fields from the BIA feature class
         fields_to_delete = [field.name for field in arcpy.ListFields(bia_path) if field.name != 'SHAPE'
