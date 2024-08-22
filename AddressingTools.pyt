@@ -83,6 +83,12 @@ class BIAUpdateTool:
         """Define the tool (tool name is the name of the class)."""
         self.label = "Building Inspection Area Update Tool"
         self.description = "Updates the addressing point dataset with intersecting building inspection areas codes."
+        self.domain_dict = {"Prefix": "Addressing_Prefix",
+                            "Street_Type": "Addressing_Street_Type",
+                            "Unit_Type": "Addressing_Unit_Type",
+                            "City": "Addressing_City",
+                            "Status": "Addressing_Status",
+                            "BIA": "BuildingInspectionArea"}
 
     def getParameterInfo(self):
         """Define the tool parameters."""
@@ -122,7 +128,7 @@ class BIAUpdateTool:
         address_fc = f"SCD_GIS_{db}.SCD_GDBA.ADDRESSING__Address_Points_PDS"
         bia_fc = f"SCD_GIS_{db}.SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
         user_list = ["SNOCO\\SCD_GIS_Addressing", "SNOCO\\PDSGISEditor"]
-        update_bia(sde_connection, address_fc, bia_fc, user_list)
+        update_bia(sde_connection, address_fc, bia_fc, user_list, self.domain_dict)
         return
 
     def postExecute(self, parameters):
@@ -231,7 +237,7 @@ def check_for_clipped_raster(raster_name):
     return
 
 
-def update_bia(sde_connection, address_fc_name, bia_fc_name, user_list):
+def update_bia(sde_connection, address_fc_name, bia_fc_name, user_list, domain_dict):
     """
     Updates the address point feature class using a spatial join with the building inspection area polygon feature class
     to update the BIA attribute field in the address point feature class.
@@ -258,12 +264,13 @@ def update_bia(sde_connection, address_fc_name, bia_fc_name, user_list):
         # Retrieve list of attribute fields from the BIA feature class
         fields_to_delete = [field.name for field in arcpy.ListFields(bia_path) if field.name != 'SHAPE'
                             and field.name != 'OBJECTID']
+        fields_to_delete.extend(["Join_Count", "TARGET_FID"])  # These fields will be added by the spatial join
 
         # Perform spatial join with specified field mappings
         joined_fc = arcpy.SpatialJoin_analysis(
             target_features=address_path,
             join_features=bia_path,
-            out_feature_class="in_memory/joined_output",
+            out_feature_class="memory/joined_output",
             join_type="KEEP_COMMON",
             match_option="INTERSECT"
         )
@@ -288,8 +295,14 @@ def update_bia(sde_connection, address_fc_name, bia_fc_name, user_list):
         arcpy.CopyFeatures_management(joined_fc, address_path)
         arcpy.AddMessage("Copied over new address point feature class with updated BIA values...")
 
+        # Reassign domains to attribute fields
+        for key, value in domain_dict.items():
+            arcpy.AssignDomainToField_management(address_path, key, value)
+        arcpy.AddMessage("Assigned domains to attribute fields in address point feature class...")
+
         # Update privileges
         set_privileges(address_path, user_list)
+        arcpy.AddMessage("Setting privileges...")
 
         arcpy.AddMessage("BIA attribute field updated successfully!")
     else:
