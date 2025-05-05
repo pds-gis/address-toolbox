@@ -215,6 +215,67 @@ class RemoveImageFromMosaicTool:
         return
 
 
+# THIS CLASS WILL CONTROL THE PROCESS FOR INTEGRATING GEOSPATIAL ADDRESS RECORDS WITH AMANDA PROJECTS. THIS INCLUDES
+# PREPROCESSING NEWLY ADDED ADDRESS POINT FEATURES WITH THE FOLLOWING ATTRIBUTES...
+#   1. BUILDING INSPECTION AREA
+#   2. X/Y COORDINATES
+#   3. PARCEL ID NUMBER
+# ...FOLLOWED BY CALLING THE SNOCO_GIS_PROPERTY_INSERT FUNCTION FROM THE AMANDA SCD_AMANDA_PROD DATABASE
+
+class PushAddressTool:
+    def __init__(self):
+        """Define the tool (tool name is the name of the class)."""
+        self.label = "Push Addresses to AMANdA Tool"
+        self.description = "Preprocess address features and push to AMANDA database for project creation."
+        self.domain_dict = {"Prefix": "Addressing_Prefix",
+                            "Street_Type": "Addressing_Street_Type",
+                            "Unit_Type": "Addressing_Unit_Type",
+                            "City": "Addressing_City",
+                            "Status": "Addressing_Status",
+                            "BIA": "BuildingInspectionArea"}
+
+    def getParameterInfo(self):
+        """Define the tool parameters."""
+        param0 = arcpy.Parameter(
+            displayName="Choose the database environment to run the tool",
+            name="env",
+            datatype="GPString",
+            parameterType="Required",
+            direction="Input"
+        )
+
+        param0.filter.type = "ValueList"
+        param0.filter.list = ["PROD", "PROD_TEST"]
+
+
+        params = [param0]
+        return params
+
+    def isLicensed(self):
+        """Set whether the tool is licensed to execute."""
+        return True
+
+    def updateParameters(self, parameters):
+        """Modify the values and properties of parameters before internal
+        validation is performed.  This method is called whenever a parameter
+        has been changed."""
+        return
+
+    def updateMessages(self, parameters):
+        """Modify the messages created by internal validation for each tool
+        parameter. This method is called after internal validation."""
+        return
+
+    def execute(self, params, messages):
+        """The source code of the tool."""
+        return
+
+    def postExecute(self, parameters):
+        """This method takes place after outputs are processed and
+        added to the display."""
+        return
+
+
 def process_site_plan(raster_name, folder_name, address_report_id):
     # Set the workspace
     arcpy.env.workspace = \
@@ -315,6 +376,17 @@ def check_for_clipped_raster(raster_name):
     return
 
 
+def extract_image_name(list_filepaths):
+    list_image_names = []
+    string_prefix = r"\clip_"
+    for filepath in list_filepaths:
+        start_index = filepath.find(string_prefix)
+        if start_index != -1:
+            image_name = filepath[start_index + len(string_prefix):]
+            list_image_names.append(image_name)
+    return list_image_names
+
+
 def update_bia(sde_connection, address_fc_name, bia_fc_name, user_list, domain_dict):
     """
     Updates the address point feature class using a spatial join with the building inspection area polygon feature class
@@ -408,24 +480,35 @@ def set_privileges(fc_path, user_list):
     return
 
 
-def export_to_csv():
+def calculateXY():
     '''
-    Exports a CSV file of address point feature attributes, based on a user-selected list of AMANDA permit project
-    ID values. Then call a stored procedure (or function) in AMANDA to begin the folder creation process.
+    Calculate the X and Y coordinate values for address point features.
+    :return:
+    '''
+    return
+
+def getPID():
+    '''
+    Intersects address point features with parcel features to add the parcel ID number as an attribute to the address
+    point features.
+    :return:
+    '''
+    return
+
+def preprocess_address_features():
+    '''
+    Updates address point feature attributes with building inspection area, X/Y coordinates, and parcel ID numbers.
     :return:
     '''
     return
 
 
-def extract_image_name(list_filepaths):
-    list_image_names = []
-    string_prefix = r"\clip_"
-    for filepath in list_filepaths:
-        start_index = filepath.find(string_prefix)
-        if start_index != -1:
-            image_name = filepath[start_index + len(string_prefix):]
-            list_image_names.append(image_name)
-    return list_image_names
+def call_amanda_function():
+    '''
+    Calls the Snoco_GIS_Property_UpdatePID function from the AMANDA database
+    :return: this will either be a 0 or true/false value to indicate the function completed successfully.
+    '''
+    return
 
 
 # TESTING
