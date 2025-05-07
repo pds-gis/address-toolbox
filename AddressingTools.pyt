@@ -232,7 +232,7 @@ class PushAddressTool:
                                                    selection_type='NEW_SELECTION')
 
         # update the building inspection area value for the selected address point features
-        update_bia(sde_connection, address_fc, bia_fc, user_list, self.domain_dict) # FIXME: change input to address_lyr
+        update_bia(sde_connection, address_layer, bia_fc, user_list, self.domain_dict)
 
 
 
@@ -355,7 +355,7 @@ def extract_image_name(list_filepaths):
     return list_image_names
 
 
-def update_bia(sde_connection, address_fc_name, bia_fc_name, user_list, domain_dict):
+def update_bia(sde_connection, address_layer, bia_fc_name, user_list, domain_dict):
     """
     Updates the address point feature class using a spatial join with the building inspection area polygon feature class
     to update the BIA attribute field in the address point feature class.
@@ -374,59 +374,19 @@ def update_bia(sde_connection, address_fc_name, bia_fc_name, user_list, domain_d
         "Area 8": 8
     }
 
-    # Check if the addressing point feature class exists
-    address_path = f"{sde_connection}\{address_fc_name}"
+    # Check if the building inspection area feature class exists.
     bia_path = f"{sde_connection}\{bia_fc_name}"
-    arcpy.AddMessage(f"address_path: {address_path}\nbia_path: {bia_path}")
-    if check_feature_class_exists(sde_connection, address_fc_name):
-        # Retrieve list of attribute fields from the BIA feature class
-        fields_to_delete = [field.name for field in arcpy.ListFields(bia_path) if field.name != 'SHAPE'
-                            and field.name != 'OBJECTID']
-        fields_to_delete.extend(["Join_Count", "TARGET_FID"])  # These fields will be added by the spatial join
-
+    arcpy.AddMessage(f"bia_path: {bia_path}")
+    if check_feature_class_exists(sde_connection, bia_fc_name):
         # Perform spatial join with specified field mappings
-        joined_fc = arcpy.SpatialJoin_analysis(
-            target_features=address_path,
-            join_features=bia_path,
-            out_feature_class="memory/joined_output",
-            join_type="KEEP_COMMON",
-            match_option="INTERSECT"
-        )
-        arcpy.AddMessage("BIA polygon features joined to address point features...")
-
-        with arcpy.da.UpdateCursor(joined_fc, ["BIA", "LABEL"]) as cursor:
-            for row in cursor:
-                # Set 'BIA' to the code corresponding to 'LABEL', defaulting to 0 if not found
-                row[0] = label_to_code.get(row[1], 0)  # Default to 0 if no match found
-                cursor.updateRow(row)
-        arcpy.AddMessage("Address point features updated with BIA values...")
-
-        # Delete the unwanted attribute fields from joined feature class
-        arcpy.DeleteField_management(joined_fc, fields_to_delete)
-        arcpy.AddMessage("Deleted joined attribute fields originating from BIA feature class...")
-
-        # Delete the original address point feature class
-        arcpy.Delete_management(address_path)
-        arcpy.AddMessage("Deleted the address point feature class...")
-
-        # Copy the updated in-memory feature class to the original location
-        arcpy.CopyFeatures_management(joined_fc, address_path)
-        arcpy.AddMessage("Copied over new address point feature class with updated BIA values...")
-
-        # Reassign domains to attribute fields
-        for key, value in domain_dict.items():
-            arcpy.AssignDomainToField_management(address_path, key, value)
-        arcpy.AddMessage("Assigned domains to attribute fields in address point feature class...")
-
-        # Update privileges
-        set_privileges(address_path, user_list)
-        arcpy.AddMessage("Setting privileges...")
-
-        arcpy.AddMessage("BIA attribute field updated successfully!")
+        arcpy.AddSpatialJoin_management(target_features=address_layer, join_features=bia_path,
+                                        match_option='INTERSECT',
+                                        permanent_join='NO_PERMANENT_FIELDS',
+                                        match_fields=[["BIA","BIA"]])
     else:
-        arcpy.AddMessage("Processing halted due to missing address point feature class!")
-    return
+        arcpy.AddError("Building Inspection Area feature class not found!")
 
+    return
 
 def check_feature_class_exists(sde_connection, fc_name):
     """Checks if the feature class exists in the SDE database."""
@@ -493,4 +453,4 @@ def call_amanda_function():
 # TESTING
 # raster_name = "19-109012 Carlson SP.tif"
 # folder_name = "19-109012"
-# process_site_plan(raster_name, folder_name)
+# update_bia( )
