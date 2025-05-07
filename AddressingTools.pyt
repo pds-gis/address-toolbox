@@ -10,7 +10,7 @@ class Toolbox:
         self.alias = "Addressing Toolbox"
 
         # List of tool classes associated with this toolbox
-        self.tools = [ProcessSitePlanImageTool, BIAUpdateTool, RemoveImageFromMosaicTool]
+        self.tools = [ProcessSitePlanImageTool, RemoveImageFromMosaicTool, PushAddressTool]
 
 
 class ProcessSitePlanImageTool:
@@ -70,65 +70,6 @@ class ProcessSitePlanImageTool:
         project_number = params[1].valueAsText
         address_report_id = params[2].valueAsText
         process_site_plan(raster_layer, project_number, address_report_id)
-        return
-
-    def postExecute(self, parameters):
-        """This method takes place after outputs are processed and
-        added to the display."""
-        return
-
-
-class BIAUpdateTool:
-    def __init__(self):
-        """Define the tool (tool name is the name of the class)."""
-        self.label = "Building Inspection Area Update Tool"
-        self.description = "Updates the addressing point dataset with intersecting building inspection areas codes."
-        self.domain_dict = {"Prefix": "Addressing_Prefix",
-                            "Street_Type": "Addressing_Street_Type",
-                            "Unit_Type": "Addressing_Unit_Type",
-                            "City": "Addressing_City",
-                            "Status": "Addressing_Status",
-                            "BIA": "BuildingInspectionArea"}
-
-    def getParameterInfo(self):
-        """Define the tool parameters."""
-        param0 = arcpy.Parameter(
-            displayName="Choose the database environment to run the tool",
-            name="env",
-            datatype="GPString",
-            parameterType="Required",
-            direction="Input"
-        )
-
-        param0.filter.type = "ValueList"
-        param0.filter.list = ["PROD", "PROD_TEST"]
-
-        params = [param0]
-        return params
-
-    def isLicensed(self):
-        """Set whether the tool is licensed to execute."""
-        return True
-
-    def updateParameters(self, parameters):
-        """Modify the values and properties of parameters before internal
-        validation is performed.  This method is called whenever a parameter
-        has been changed."""
-        return
-
-    def updateMessages(self, parameters):
-        """Modify the messages created by internal validation for each tool
-        parameter. This method is called after internal validation."""
-        return
-
-    def execute(self, params, messages):
-        """The source code of the tool."""
-        db = params[0].valueAsText
-        sde_connection = f"\\\snoco\gis\plng\GDB_connections_PAG\SCD_GDBA\SCD_GDBA@SCD_GIS_{db}.sde"
-        address_fc = f"SCD_GIS_{db}.SCD_GDBA.ADDRESSING__Address_Points_PDS"
-        bia_fc = f"SCD_GIS_{db}.SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
-        user_list = ["SNOCO\\SCD_GIS_Addressing", "SNOCO\\PDSGISEditor"]
-        update_bia(sde_connection, address_fc, bia_fc, user_list, self.domain_dict)
         return
 
     def postExecute(self, parameters):
@@ -268,6 +209,33 @@ class PushAddressTool:
 
     def execute(self, params, messages):
         """The source code of the tool."""
+
+        # constants
+        db = params[0].valueAsText
+        sde_connection = f"\\\snoco\gis\plng\GDB_connections_PAG\SCD_GDBA\SCD_GDBA@SCD_GIS_{db}.sde"
+        bia_fc = f"SCD_GIS_{db}.SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
+        user_list = ["SNOCO\\SCD_GIS_Addressing", "SNOCO\\PDSGISEditor"]
+
+        # Check if address and site plan polygon layers exist in current Pro project.
+        address_layer = check_for_layers('Address Points - Active')
+        siteplan_layer = check_for_layers('Site Plan polygon clip')
+        if not address_layer:
+            arcpy.AddError(f"Address point layer not found in current map!")
+        if not siteplan_layer:
+            arcpy.AddError(f"Site Plan polygon layer not found in current map!")
+
+        # Select address point features by intersecting with site plan polygon layer.
+        if address_layer and siteplan_layer:
+            arcpy.SelectLayerByLocation_management(in_layer=address_layer,
+                                                   overlap_type='INTERSECT',
+                                                   select_features=siteplan_layer,
+                                                   selection_type='NEW_SELECTION')
+
+        # update the building inspection area value for the selected address point features
+        update_bia(sde_connection, address_fc, bia_fc, user_list, self.domain_dict) # FIXME: change input to address_lyr
+
+
+
         return
 
     def postExecute(self, parameters):
@@ -479,6 +447,17 @@ def set_privileges(fc_path, user_list):
         arcpy.AddMessage("Privileges updated successfully...")
     return
 
+def check_for_layers(layer_name, map_name="Map"):
+    '''
+    Check for the presence of the layer in the current Pro project, based on the layer name
+    :return: layer object
+    '''
+    aprx = arcpy.mp.ArcGISProject('CURRENT')
+    map = aprx.listMaps(map_name)[0]
+    for lyr in map.listLayers():
+        if lyr.name.lower() == layer_name.lower():
+            return lyr
+    return None
 
 def calculateXY():
     '''
