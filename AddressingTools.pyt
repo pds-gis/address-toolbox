@@ -237,7 +237,10 @@ class PushAddressTool:
         arcpy.management.CalculateGeometryAttributes(in_features=address_lyr,
                                                      geometry_property="X POINT_X;Y POINT_Y",
                                                      coordinate_format="DD")
-        
+        arcpy.AddMessage("X and Y coordinates calculated.")
+
+        # intersect selected address point features with parcels to update parcel ID values.
+        update_pid(address_lyr)
 
         return
 
@@ -321,7 +324,6 @@ def process_site_plan(raster_name, folder_name, address_report_id):
 def clean_raster_name(input_string):
     return input_string.replace("-", "_").replace(" ", "_")
 
-
 def check_for_features(layer_name):
     polygon_count = arcpy.GetCount_management(layer_name)[0]
     if int(polygon_count) == 1:
@@ -337,7 +339,6 @@ def check_for_features(layer_name):
             f"this tool...")
         return
 
-
 def check_for_clipped_raster(raster_name):
     raster_list = arcpy.ListRasters("*", "GRID")
     for raster in raster_list:
@@ -345,7 +346,6 @@ def check_for_clipped_raster(raster_name):
             arcpy.Delete_management(raster)
     arcpy.AddMessage(f'{raster_name} found in mosaic geodatabase. Deleting now...')
     return
-
 
 def extract_image_name(list_filepaths):
     list_image_names = []
@@ -357,13 +357,9 @@ def extract_image_name(list_filepaths):
             list_image_names.append(image_name)
     return list_image_names
 
-
 def update_bia(sde_connection, address_layer, bia_fc_name):
-    """
-    Updates the address point feature class using a spatial join with the building inspection area polygon feature class
-    to update the BIA attribute field in the address point feature class.
-    :return: none
-    """
+    """Updates the address point feature class using a spatial join with the building inspection area polygon feature class
+    to update the BIA attribute field in the address point feature class."""
 
     # Check if the building inspection area feature class exists.
     bia_path = f"{sde_connection}\{bia_fc_name}"
@@ -379,24 +375,32 @@ def update_bia(sde_connection, address_layer, bia_fc_name):
             match_option="INTERSECT"
         )
 
-    # Build dictionary from joined layer: {object_id: bia_value}
-    joined_dict = {}
-    fields = [f.name for f in arcpy.ListFields(joined_lyr)]
-    bia_field = [f for f in fields if f.startswith("BIA") and f != "BIA"][0]  # e.g. "BIA_1"
-    with arcpy.da.SearchCursor(
-        in_table=joined_lyr, field_names=["TARGET_FID", bia_field]) as cursor:
-        for row in cursor:
-            joined_dict[row[0]] = row[1]
-
-    # Update the address layer using the dictionary
-    with arcpy.da.UpdateCursor(in_table=address_layer,field_names=["OBJECTID", "BIA"]) as cursor:
-        for row in cursor:
-            object_id = row[0]
-            if object_id in joined_dict:
-                row[1] = joined_dict[object_id]
-            cursor.updateRow(row)
-
+    # Transfer attributes based on spatial join
+    from_field = 'BIA'
+    to_field = 'BIA'
+    joined_dict = transfer_attributes_spatial_join(address_layer, joined_lyr, from_field, to_field)
     arcpy.AddMessage(f"{len(joined_dict)} address points successfully updated with BIA values.")
+    return
+
+def update_pid(address_layer):
+    '''Spatially joins address point features with parcel features to add the parcel ID number as an attribute to the
+    address point features.'''
+
+    parcel_fc = r'\\snoco\gis\plng\GDB_connections_PAG\WIN_USER\WIN_USER@GIS_FEATURES_PAG.sde\GDBA.CADASTRAL__parcels'
+    joined_lyr = "memory\\joined_address_parcel"
+    arcpy.SpatialJoin_analysis(
+        target_features=address_layer,
+        join_features=parcel_fc,
+        out_feature_class=joined_lyr,
+        join_operation="JOIN_ONE_TO_ONE",
+        match_option="INTERSECT"
+    )
+
+    # Transfer attributes based on spatial join
+    from_field = 'PARCEL_ID'
+    to_field = 'Parcel_ID'
+    joined_dict = transfer_attributes_spatial_join(address_layer, joined_lyr, from_field, to_field)
+    arcpy.AddMessage(f"{len(joined_dict)} address points successfully updated with parcel ID values.")
     return
 
 def check_feature_class_exists(sde_connection, fc_name):
@@ -408,7 +412,6 @@ def check_feature_class_exists(sde_connection, fc_name):
     else:
         arcpy.AddError(f"Feature class '{fc_name}' not found.")
         return False
-
 
 def set_privileges(fc_path, user_list):
     if arcpy.Exists(fc_path):
@@ -430,13 +433,28 @@ def check_for_layers(layer_name, map_name="Map"):
             return lyr
     return None
 
-def get_pid():
+def transfer_attributes_spatial_join(target_layer, joined_layer, from_field, to_field):
     '''
-    Intersects address point features with parcel features to add the parcel ID number as an attribute to the address
-    point features.
-    :return:
+    Will transfer values from an attribute field in a temporary spatially joined layer to an attribute field in the
+    target layer.
     '''
-    return
+    # Build dictionary from joined layer: {object_id: from_value}
+    joined_dict = {}
+    fields = [f.name for f in arcpy.ListFields(joined_layer)]
+    from_field_clean = [f for f in fields if f.startswith(from_field) and f != from_field][0]  # e.g. "from_field_1"
+    with arcpy.da.SearchCursor(
+        in_table=joined_layer, field_names=["TARGET_FID", from_field_clean]) as cursor:
+        for row in cursor:
+            joined_dict[row[0]] = row[1]
+
+    # Update the address layer using the dictionary
+    with arcpy.da.UpdateCursor(in_table=target_layer,field_names=["OBJECTID", to_field]) as cursor:
+        for row in cursor:
+            object_id = row[0]
+            if object_id in joined_dict:
+                row[1] = joined_dict[object_id]
+            cursor.updateRow(row)
+    return joined_dict
 
 def call_amanda_function():
     '''
@@ -444,9 +462,3 @@ def call_amanda_function():
     :return: this will either be a 0 or true/false value to indicate the function completed successfully.
     '''
     return
-
-
-# TESTING
-# raster_name = "19-109012 Carlson SP.tif"
-# folder_name = "19-109012"
-# update_bia( )
