@@ -166,7 +166,7 @@ class RemoveImageFromMosaicTool:
 class PushAddressTool:
     def __init__(self):
         """Define the tool (tool name is the name of the class)."""
-        self.label = "Push Addresses to AMANdA Tool"
+        self.label = "Push Address Records to AMANDA"
         self.description = "Preprocess address features and push to AMANDA database for project creation."
         self.domain_dict = {"Prefix": "Addressing_Prefix",
                             "Street_Type": "Addressing_Street_Type",
@@ -187,9 +187,17 @@ class PushAddressTool:
 
         param0.filter.type = "ValueList"
         param0.filter.list = ["PROD", "PROD_TEST"]
+        param0.value = "PROD"
 
+        param1 = arcpy.Parameter(
+            displayName="Choose the address point layer",
+            name="address_lyr",
+            datatype="GPFeatureLayer",
+            parameterType="Required",
+            direction="Input"
+        )
 
-        params = [param0]
+        params = [param0, param1]
         return params
 
     def isLicensed(self):
@@ -212,29 +220,24 @@ class PushAddressTool:
 
         # constants
         db = params[0].valueAsText
+        address_lyr = params[1].valueAsText
         sde_connection = f"\\\snoco\gis\plng\GDB_connections_PAG\SCD_GDBA\SCD_GDBA@SCD_GIS_{db}.sde"
         bia_fc = f"SCD_GIS_{db}.SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
-        user_list = ["SNOCO\\SCD_GIS_Addressing", "SNOCO\\PDSGISEditor"]
 
-        # Check if address and site plan polygon layers exist in current Pro project.
-        address_layer = check_for_layers('Address Points - Active')
-        siteplan_layer = check_for_layers('Site Plan polygon clip')
-        if not address_layer:
-            arcpy.AddError(f"Address point layer not found in current map!")
-        if not siteplan_layer:
-            arcpy.AddError(f"Site Plan polygon layer not found in current map!")
-
-        # Select address point features by intersecting with site plan polygon layer.
-        if address_layer and siteplan_layer:
-            arcpy.SelectLayerByLocation_management(in_layer=address_layer,
-                                                   overlap_type='INTERSECT',
-                                                   select_features=siteplan_layer,
-                                                   selection_type='NEW_SELECTION')
+        # double-check that the address layer has selected points
+        desc = arcpy.Describe(address_lyr)
+        if hasattr(desc, "FIDSet") and not desc.FIDSet:
+            raise arcpy.ExecuteError("No features selected in the address layer! Please select features and try again...")
+        arcpy.AddMessage("Proceeding with selected address point features...")
 
         # update the building inspection area value for the selected address point features
-        update_bia(sde_connection, address_layer, bia_fc, user_list, self.domain_dict)
+        update_bia(sde_connection, address_lyr, bia_fc)
 
-
+        # calculate x and y coordinates for selected address points (use in_features coord. system by default)
+        arcpy.management.CalculateGeometryAttributes(in_features=address_lyr,
+                                                     geometry_property="X POINT_X;Y POINT_Y",
+                                                     coordinate_format="DD")
+        
 
         return
 
@@ -355,37 +358,45 @@ def extract_image_name(list_filepaths):
     return list_image_names
 
 
-def update_bia(sde_connection, address_layer, bia_fc_name, user_list, domain_dict):
+def update_bia(sde_connection, address_layer, bia_fc_name):
     """
     Updates the address point feature class using a spatial join with the building inspection area polygon feature class
     to update the BIA attribute field in the address point feature class.
     :return: none
     """
 
-    # Mapping from LABEL descriptions to BIA codes to use domain values
-    label_to_code = {
-        "Area 1": 1,
-        "Area 2": 2,
-        "Area 3": 3,
-        "Area 4": 4,
-        "Area 5": 5,
-        "Area 6": 6,
-        "Area 7": 7,
-        "Area 8": 8
-    }
-
     # Check if the building inspection area feature class exists.
     bia_path = f"{sde_connection}\{bia_fc_name}"
     arcpy.AddMessage(f"bia_path: {bia_path}")
+    joined_lyr = "memory\\joined_address_bia"
     if check_feature_class_exists(sde_connection, bia_fc_name):
         # Perform spatial join with specified field mappings
-        arcpy.AddSpatialJoin_management(target_features=address_layer, join_features=bia_path,
-                                        match_option='INTERSECT',
-                                        permanent_join='NO_PERMANENT_FIELDS',
-                                        match_fields=[["BIA","BIA"]])
-    else:
-        arcpy.AddError("Building Inspection Area feature class not found!")
+        arcpy.SpatialJoin_analysis(
+            target_features=address_layer,
+            join_features=bia_path,
+            out_feature_class=joined_lyr,
+            join_operation="JOIN_ONE_TO_ONE",
+            match_option="INTERSECT"
+        )
 
+    # Build dictionary from joined layer: {object_id: bia_value}
+    joined_dict = {}
+    fields = [f.name for f in arcpy.ListFields(joined_lyr)]
+    bia_field = [f for f in fields if f.startswith("BIA") and f != "BIA"][0]  # e.g. "BIA_1"
+    with arcpy.da.SearchCursor(
+        in_table=joined_lyr, field_names=["TARGET_FID", bia_field]) as cursor:
+        for row in cursor:
+            joined_dict[row[0]] = row[1]
+
+    # Update the address layer using the dictionary
+    with arcpy.da.UpdateCursor(in_table=address_layer,field_names=["OBJECTID", "BIA"]) as cursor:
+        for row in cursor:
+            object_id = row[0]
+            if object_id in joined_dict:
+                row[1] = joined_dict[object_id]
+            cursor.updateRow(row)
+
+    arcpy.AddMessage(f"{len(joined_dict)} address points successfully updated with BIA values.")
     return
 
 def check_feature_class_exists(sde_connection, fc_name):
@@ -419,28 +430,13 @@ def check_for_layers(layer_name, map_name="Map"):
             return lyr
     return None
 
-def calculateXY():
-    '''
-    Calculate the X and Y coordinate values for address point features.
-    :return:
-    '''
-    return
-
-def getPID():
+def get_pid():
     '''
     Intersects address point features with parcel features to add the parcel ID number as an attribute to the address
     point features.
     :return:
     '''
     return
-
-def preprocess_address_features():
-    '''
-    Updates address point feature attributes with building inspection area, X/Y coordinates, and parcel ID numbers.
-    :return:
-    '''
-    return
-
 
 def call_amanda_function():
     '''
