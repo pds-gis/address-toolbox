@@ -230,6 +230,12 @@ class PushAddressTool:
             raise arcpy.ExecuteError("No features selected in the address layer! Please select features and try again...")
         arcpy.AddMessage("Proceeding with selected address point features...")
 
+        # remove selected address point features where RSN attribute value is not null
+        if check_for_nulls(input_layer=address_lyr, attrb_field='RSN'):
+            arcpy.SelectLayerByAttribute_management(in_layer_or_view=address_lyr,
+                                                    selection_type="REMOVE_FROM_SELECTION",
+                                                    where_clause = "RSN IS NOT NULL")
+
         # update the building inspection area value for the selected address point features
         update_bia(sde_connection, address_lyr, bia_fc)
 
@@ -456,7 +462,26 @@ def transfer_attributes_spatial_join(target_layer, joined_layer, from_field, to_
             cursor.updateRow(row)
     return joined_dict
 
-def call_amanda_function():
+
+def check_for_nulls(input_layer, attrb_field):
+    '''
+    This function checks whether the input layer has attributes in the attribute field that are null.
+    :param input_layer: Layer with selected features
+    :param attrb_field: Name of the attribute field in the input layer that will be checked for nulls
+    :return:
+    '''
+    # Construct a SQL statement using the attrb_field variable
+    sql_clause = f"{attrb_field} IS NULL"
+
+    with arcpy.da.SearchCursor(input_layer, attrb_field, sql_clause) as cursor:
+        for row in cursor:
+            if row[0] is None:
+                return True
+
+    return False
+
+
+def call_amanda_sproc():
     '''
     Calls the Snoco_GIS_Property_UpdatePID function from the AMANDA database
     :return: this will either be a 0 or true/false value to indicate the function completed successfully.
