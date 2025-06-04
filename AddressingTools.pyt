@@ -156,38 +156,52 @@ class RemoveImageFromMosaicTool:
         return
 
 
-# THIS CLASS WILL CONTROL THE PROCESS FOR INTEGRATING GEOSPATIAL ADDRESS RECORDS WITH AMANDA PROJECTS. THIS INCLUDES
-# PREPROCESSING NEWLY ADDED ADDRESS POINT FEATURES WITH THE FOLLOWING ATTRIBUTES...
-#   1. BUILDING INSPECTION AREA
-#   2. X/Y COORDINATES
-#   3. PARCEL ID NUMBER
-# ...FOLLOWED BY CALLING THE SNOCO_GIS_PROPERTY_INSERT FUNCTION FROM THE AMANDA SCD_AMANDA_PROD DATABASE
-
 class PushAddressTool:
     def __init__(self):
         """Define the tool (tool name is the name of the class)."""
         self.label = "Push Address Records to AMANDA"
         self.description = "Preprocess address features and push to AMANDA database for project creation."
-        self.domain_dict = {"Prefix": "Addressing_Prefix",
-                            "Street_Type": "Addressing_Street_Type",
-                            "Unit_Type": "Addressing_Unit_Type",
-                            "City": "Addressing_City",
-                            "Status": "Addressing_Status",
-                            "BIA": "BuildingInspectionArea"}
+        self.amanda_dict = {'PropertyRSN': 'RSN'
+                            ,'PropCode': '1'
+                            ,'PropHouse': 'House_Number'
+                            ,'PropStreetPrefix': 'Prefix'
+                            ,'PropStreet': 'Street_Name'
+                            ,'PropStreetType': 'Street_Type'
+                            ,'PropStreetDirection': 'Direction'
+                            ,'PropUnitType': 'Unit_Type'
+                            ,'PropUnit': 'Unit_Number'
+                            ,'PropCity': 'City'
+                            ,'PropProvince': 'State'
+                            ,'PropPostal': 'Zip_Code'
+                            ,'PropPlan': 'Plat'
+                            ,'PropLot': 'Lot'
+                            ,'PropBlock': 'Block'
+                            ,'PropSubDivision': 'Subdivision'
+                            ,'StatusCode': 1
+                            ,'PropSection': 'Section'
+                            ,'PropTownship': 'Township'
+                            ,'PropRange': 'Range'
+                            ,'PropertyRoll': 'PDS_Project_ID'
+                            ,'DateCreated': 'created_date'
+                            ,'StampUser': 'last_edited_user'
+                            ,'StampDate': 'last_edited_date'
+                            ,'PropGisId1': 'Parcel_ID'
+                            ,'PropX': 'X'
+                            ,'PropY': 'Y'
+                            ,'BuildingInspectionArea': 'BIA'}
 
     def getParameterInfo(self):
         """Define the tool parameters."""
         param0 = arcpy.Parameter(
-            displayName="Choose the database environment to run the tool",
-            name="env",
+            displayName="Choose the AMANDA database environment to target",
+            name="amanda_server",
             datatype="GPString",
             parameterType="Required",
             direction="Input"
         )
-
         param0.filter.type = "ValueList"
-        param0.filter.list = ["PROD", "PROD_TEST"]
-        param0.value = "PROD"
+        param0.filter.list = ["PAG-AMANDA", "DAG-AMANDA"]
+        param0.value = "PAG-AMANDA"
 
         param1 = arcpy.Parameter(
             displayName="Choose the address point layer",
@@ -197,7 +211,18 @@ class PushAddressTool:
             direction="Input"
         )
 
-        params = [param0, param1]
+        param2 = arcpy.Parameter(
+            displayName="Choose the GIS server environment",
+            name="sde_env",
+            datatype="GPString",
+            parameterType="Required",
+            direction="Input"
+        )
+        param2.filter.type = "ValueList"
+        param2.filter.list = ["PROD", "PROD_TEST"]
+        param2.value = "PROD"
+
+        params = [param0, param1, param2]
         return params
 
     def isLicensed(self):
@@ -219,34 +244,40 @@ class PushAddressTool:
         """The source code of the tool."""
 
         # constants
-        db = params[0].valueAsText
+        server_name = params[0].valueAsText
         address_lyr = params[1].valueAsText
+        db = params[2].valueAsText
         sde_connection = f"\\\snoco\gis\plng\GDB_connections_PAG\SCD_GDBA\SCD_GDBA@SCD_GIS_{db}.sde"
         bia_fc = f"SCD_GIS_{db}.SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
 
-        # double-check that the address layer has selected points
-        desc = arcpy.Describe(address_lyr)
-        if hasattr(desc, "FIDSet") and not desc.FIDSet:
-            raise arcpy.ExecuteError("No features selected in the address layer! Please select features and try again...")
-        arcpy.AddMessage("Proceeding with selected address point features...")
+        # test mode
+        test_mode = True # change to True when testing in PyCharm
 
-        # remove selected address point features where RSN attribute value is not null
-        if check_for_nulls(input_layer=address_lyr, attrb_field='RSN'):
-            arcpy.SelectLayerByAttribute_management(in_layer_or_view=address_lyr,
-                                                    selection_type="REMOVE_FROM_SELECTION",
-                                                    where_clause = "RSN IS NOT NULL")
+        # double-check that the address layer has selected points
+        if not test_mode:
+            desc = arcpy.Describe(address_lyr)
+            if hasattr(desc, "FIDSet") and not desc.FIDSet:
+                raise arcpy.ExecuteError("No features selected in the address layer! Please select features and try again...")
+            arcpy.AddMessage("Proceeding with selected address point features...")
+
+            # remove selected address point features where RSN attribute value is not null
+            if check_for_nulls(input_layer=address_lyr, attrb_field='RSN'):
+                arcpy.SelectLayerByAttribute_management(in_layer_or_view=address_lyr,
+                                                        selection_type="REMOVE_FROM_SELECTION",
+                                                        where_clause="RSN IS NOT NULL")
 
         # update the building inspection area value for the selected address point features
         update_bia(sde_connection, address_lyr, bia_fc)
 
-        # calculate x and y coordinates for selected address points (use in_features coord. system by default)
-        arcpy.management.CalculateGeometryAttributes(in_features=address_lyr,
-                                                     geometry_property="X POINT_X;Y POINT_Y",
-                                                     coordinate_format="DD")
-        arcpy.AddMessage("X and Y coordinates calculated.")
+
+        # calculate the x and y coordinate for the selected address point features
+        calc_xy(address_lyr)
 
         # intersect selected address point features with parcels to update parcel ID values.
         update_pid(address_lyr)
+
+        # based on the PID for the selected addresses, populate records in AMANDA and get returned RSN value
+        execute_amanda_sproc(server=server_name, address_layer=address_lyr)
 
         return
 
@@ -463,6 +494,16 @@ def transfer_attributes_spatial_join(target_layer, joined_layer, from_field, to_
     return joined_dict
 
 
+def calc_xy(address_layer):
+    with arcpy.da.UpdateCursor(address_layer, ["X", "Y"]) as cursor:
+        for row in cursor:
+            row[0] = "SHAPE@X"
+            row[1] = "SHAPE@Y"
+            cursor.updateRow(row)
+    arcpy.AddMessage("X and Y coordinates updated...")
+    return
+
+
 def check_for_nulls(input_layer, attrb_field):
     '''
     This function checks whether the input layer has attributes in the attribute field that are null.
@@ -481,9 +522,122 @@ def check_for_nulls(input_layer, attrb_field):
     return False
 
 
-def call_amanda_sproc():
+def get_amanda_cursor(server, database):
     '''
-    Calls the Snoco_GIS_Property_UpdatePID function from the AMANDA database
-    :return: this will either be a 0 or true/false value to indicate the function completed successfully.
+
+    :return:
     '''
+    import pyodbc
+    try:
+        conn_amanda = pyodbc.connect('DRIVER={SQL Server Native Client 11.0;'
+                                     f'SERVER={server};'
+                                     f'DATABASE={database};'
+                                     'Trusted_Connection=yes')
+        return conn_amanda.cursor()
+    except pyodbc.Error as ex:
+        arcpy.AddError(f"An error occurred in SQL Server: {ex}")
+        return
+
+
+def execute_amanda_sproc(self, server, database, address_layer):
+    '''
+    Calls the Snoco_GIS_Property_Proc stored procedure from the AMANDA database.
+    :return: this will be a string representing the RSN value generated by the AMANDA stored procedure.
+    '''
+    import pyodbc
+
+    conn_string = f"DRIVER=SQL Server Native Client 11.0;SERVER={server};DATABASE={database};Trusted_Connection=yes"
+    amanda_dict_fields = self.amanda_dict
+    address_fields = list(amanda_dict_fields.values())
+
+    with arcpy.da.SearchCursor(address_layer, address_fields) as cursor:
+        for row in cursor:
+            try:
+                update_dict = dict(zip(address_fields, row))
+
+                sproc_params = [
+                    update_dict.get('House_Number'),
+                    update_dict.get('1'),
+                    update_dict.get('Prefix'),
+                    update_dict.get('Street_Name'),
+                    update_dict.get('Street_Type'),
+                    update_dict.get('Direction'),
+                    update_dict.get('Unit_Type'),
+                    update_dict.get('Unit_Number'),
+                    update_dict.get('City'),
+                    update_dict.get('State'),
+                    update_dict.get('Zip_Code'),
+                    update_dict.get('Plat'),
+                    update_dict.get('Lot'),
+                    update_dict.get('Block'),
+                    update_dict.get('Subdivision'),
+                    update_dict.get(1),
+                    update_dict.get('Section'),
+                    update_dict.get('Township'),
+                    update_dict.get('Range'),
+                    update_dict.get('PDS_Project_ID'),
+                    update_dict.get('created_date'),
+                    update_dict.get('last_edited_user'),
+                    update_dict.get('last_edited_date'),
+                    update_dict.get('Parcel_ID'),
+                    update_dict.get('X'),
+                    update_dict.get('Y'),
+                    update_dict.get('BIA'),
+                ]
+
+                with pyodbc.connect(conn_string) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        DECLARE @outputRSN INT;
+                        EXEC Snoco_GIS_Property_Proc
+                            @PropHouse=?, @PropStreetPrefix=?, @PropStreet=?, @PropStreetType=?, @PropStreetDirection=?,
+                            @PropUnitType=?, @PropUnit=?, @PropCity=?, @PropProvince=?, @PropPostal=?,
+                            @PropPlan=?, @PropLot=?, @PropBlock=?, @PropSubDivision=?, @PropSection=?,
+                            @PropTownship=?, @PropRange=?, @PropertyRoll=?, @DateCreated=?, @StampUser=?,
+                            @StampDate=?, @PropGisId1=?, @PropX=?, @PropY=?, @BuildingInspectionArea=?,
+                            @PropertyRSN=@outputRSN OUTPUT;
+                        SELECT @outputRSN;""",
+                    sproc_params)
+                    property_rsn = cursor.fetchone()[0]
+
+                if property_rsn == -1:
+                    arcpy.AddWarning("Property already exists. Skipping.")
+                else:
+                    arcpy.AddMessage(f"Pushed property successfully. RSN: {property_rsn}")
+
+                return property_rsn
+
+            except Exception as e:
+                arcpy.AddWarning(f"Error processing record: {str(e)}")
+
+
+# TESTING PushAddressTool
+class TestParameter:
+    def __init__(self, value):
+        self.valueAsText = value
+
+class FakeMessages:
+    def AddMessage(self, msg):
+        print(f"[MESSAGE] {msg}")
+    def AddWarning(self, msg):
+        print(f"[WARNING] {msg}")
+    def AddError(self, msg):
+        print(f"[ERROR] {msg}")
+
+def _test_execute():
+    amanda_server = 'PAG-AMANDA'
+    address_fc = r'\\snoco\gis\plng\GDB_connections_PAG\SCD_GDBA\SCD_GDBA@SCD_GIS_PROD_TEST.sde\SCD_GDBA.ADDRESSING__Address_Points_PDS_TEST'
+    address_lyr = arcpy.MakeFeatureLayer_management(address_fc, 'address_layer')
+    sde_env = 'PROD_TEST'
+    test_params = [
+        TestParameter(amanda_server),
+        TestParameter(address_lyr),
+        TestParameter(sde_env)
+        ]
+
+    fake_messages = FakeMessages()
+    tool = PushAddressTool()
+    tool.execute(test_params, fake_messages)
     return
+
+_test_execute()
