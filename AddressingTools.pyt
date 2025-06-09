@@ -160,9 +160,8 @@ class PushAddressTool:
     def __init__(self):
         """Define the tool (tool name is the name of the class)."""
         self.label = "Push Address Records to AMANDA"
-        self.description = "Preprocess address features and push to AMANDA database for project creation."
+        self.description = "Preprocess address features and push to AMANDA database to generate property records."
         self.amanda_dict = {
-                            # ,'PropCode': '' FIXME Not sure how to handle this
                              'PropHouse': 'House_Number'
                             ,'PropStreetPrefix': 'Prefix'
                             ,'PropStreet': 'Street_Name'
@@ -177,7 +176,6 @@ class PushAddressTool:
                             ,'PropLot': 'Lot'
                             ,'PropBlock': 'Block'
                             ,'PropSubDivision': 'Subdivision'
-                            # ,'StatusCode': 1 FIXME Not sure how to handle this
                             ,'PropSection': 'Section'
                             ,'PropTownship': 'Township'
                             ,'PropRange': 'Range'
@@ -252,7 +250,7 @@ class PushAddressTool:
         bia_fc = f"SCD_GIS_{db}.SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
 
         # test mode
-        test_mode = True # change to True when testing in PyCharm
+        test_mode = False # change to True when testing in PyCharm
 
         # double-check that the address layer has selected points
         if not test_mode:
@@ -266,15 +264,16 @@ class PushAddressTool:
                 arcpy.SelectLayerByAttribute_management(in_layer_or_view=address_lyr,
                                                         selection_type="REMOVE_FROM_SELECTION",
                                                         where_clause="RSN IS NOT NULL")
+                arcpy.AddWarning("Removed record")
 
         # update the building inspection area value for the selected address point features
-        # update_bia(sde_connection, address_lyr, bia_fc) TEST
+        update_bia(sde_connection, address_lyr, bia_fc)
 
         # calculate the x and y coordinate for the selected address point features
-        # calc_xy(address_lyr) TEST
+        calc_xy(address_lyr)
 
         # intersect selected address point features with parcels to update parcel ID values.
-        # update_pid(address_lyr) TEST
+        update_pid(address_lyr)
 
         # based on the PID for the selected addresses, populate records in AMANDA and get returned RSN value
         execute_amanda_sproc(self, server=server_name, database="SCD_Amanda_Test", address_layer=address_lyr)
@@ -591,7 +590,6 @@ def execute_amanda_sproc(self, server, database, address_layer):
                     row[address_field_list.index("BIA")]
                 ]
 
-                # TEST
                 call_sql = (
                     "DECLARE @outRSN INT; "
                     "EXEC dbo.Snoco_GIS_Property_Insert_Proc "
@@ -636,6 +634,7 @@ def execute_amanda_sproc(self, server, database, address_layer):
 
 
 # TESTING PushAddressTool
+'''
 class TestParameter:
     def __init__(self, value):
         self.valueAsText = value
@@ -665,3 +664,4 @@ def _test_execute():
     return
 
 _test_execute()
+'''
