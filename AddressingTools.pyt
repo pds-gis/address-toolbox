@@ -172,6 +172,7 @@ class PushAddressTool:
                             ,'PropCity': 'City'
                             ,'PropProvince': 'State'
                             ,'PropPostal': 'Zip_Code'
+                            ,'StatusCode': 'Status'
                             ,'PropPlan': 'Plat'
                             ,'PropLot': 'Lot'
                             ,'PropBlock': 'Block'
@@ -573,6 +574,7 @@ def execute_amanda_sproc(self, server, database, address_layer):
                     row[address_field_list.index("City")],
                     row[address_field_list.index("State")],
                     row[address_field_list.index("Zip_Code")],
+                    row[address_field_list.index("Status")],
                     row[address_field_list.index("Plat")],
                     row[address_field_list.index("Lot")],
                     row[address_field_list.index("Block")],
@@ -595,7 +597,7 @@ def execute_amanda_sproc(self, server, database, address_layer):
                     "EXEC dbo.Snoco_GIS_Property_Insert_Proc "
                     "@PropHouse=?, @PropStreetPrefix=?, @PropStreet=?, @PropStreetType=?, @PropStreetDirection=?, "
                     "@PropUnitType=?, @PropUnit=?, @PropCity=?, @PropProvince=?, @PropPostal=?, "
-                    "@PropPlan=?, @PropLot=?, @PropBlock=?, @PropSubDivision=?, @PropSection=?, "
+                    "@StatusCode=?, @PropPlan=?, @PropLot=?, @PropBlock=?, @PropSubDivision=?, @PropSection=?, "
                     "@PropTownship=?, @PropRange=?, @PropertyRoll=?, @DateCreated=?, @StampUser=?, "
                     "@StampDate=?, @PropGisId1=?, @PropX=?, @PropY=?, @BuildingInspectionArea=?, "
                     "@PropertyRSN=@outRSN OUTPUT; "
