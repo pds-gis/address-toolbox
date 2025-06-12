@@ -247,8 +247,8 @@ class PushAddressTool:
         server_name = params[0].valueAsText
         address_lyr = params[1].valueAsText
         db = params[2].valueAsText
-        sde_connection = f"\\\snoco\gis\plng\GDB_connections_PAG\SCD_GDBA\SCD_GDBA@SCD_GIS_{db}.sde"
-        bia_fc = f"SCD_GIS_{db}.SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
+        sde_connection = f"\\\snoco\gis\plng\GDB_connections_PAG\WIN_USER\WIN_USER@SCD_GIS_{db}.sde"
+        bia_fc = f"SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
 
         # test mode
         test_mode = False # change to True when testing in PyCharm
@@ -516,12 +516,12 @@ def check_for_nulls(input_layer, attrb_field):
     # Construct a SQL statement using the attrb_field variable
     sql_clause = f"{attrb_field} IS NULL"
 
-    with arcpy.da.SearchCursor(input_layer, attrb_field, sql_clause) as cursor:
+    with arcpy.da.SearchCursor(input_layer,["OBJECTID"], sql_clause) as cursor:
         for row in cursor:
             if row[0] is None:
                 return True
-
-    return False
+            else:
+                return False
 
 
 def get_amanda_cursor(server, database):
