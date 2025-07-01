@@ -277,7 +277,7 @@ class PushAddressTool:
         update_pid(address_lyr)
 
         # based on the PID for the selected addresses, populate records in AMANDA and get returned RSN value
-        execute_amanda_sproc(self, server=server_name, database="SCD_Amanda_Test", address_layer=address_lyr)
+        execute_amanda_sproc(self, server=server_name, database="SCD_Amanda_Prod", address_layer=address_lyr)
 
         return
 
