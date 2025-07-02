@@ -251,7 +251,7 @@ class PushAddressTool:
         bia_fc = f"SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
 
         # test mode
-        test_mode = False # change to True when testing in PyCharm
+        test_mode = True # change to True when testing in PyCharm
 
         # double-check that the address layer has selected points
         if not test_mode:
@@ -277,8 +277,8 @@ class PushAddressTool:
         update_pid(address_lyr)
 
         # based on the PID for the selected addresses, populate records in AMANDA and get returned RSN value
-        execute_amanda_sproc(self, server=server_name, database="SCD_Amanda_Prod", address_layer=address_lyr)
-
+        # execute_amanda_sproc(self, server=server_name, database="SCD_Amanda_Prod", address_layer=address_lyr)
+        execute_amanda_sproc(self, server=server_name, database="SCD_Amanda_Test", address_layer=address_lyr)
         return
 
     def postExecute(self, parameters):
@@ -563,6 +563,7 @@ def execute_amanda_sproc(self, server, database, address_layer):
     with (arcpy.da.UpdateCursor(in_table=address_layer, field_names=address_field_list) as cursor):
         for row in cursor:
             try:
+                assessor_roll = format_pid(row[address_field_list.index("Parcel_ID")])  # add dashes to parcel ID value
                 params = [
                     row[address_field_list.index("House_Number")],
                     row[address_field_list.index("Prefix")],
@@ -582,7 +583,7 @@ def execute_amanda_sproc(self, server, database, address_layer):
                     row[address_field_list.index("Section")],
                     row[address_field_list.index("Township")],
                     row[address_field_list.index("Range")],
-                    row[address_field_list.index("PDS_Project_ID")],
+                    assessor_roll,
                     row[address_field_list.index("created_date")],
                     row[address_field_list.index("last_edited_user")],
                     row[address_field_list.index("last_edited_date")],
@@ -633,6 +634,12 @@ def execute_amanda_sproc(self, server, database, address_layer):
     arcpy.AddMessage('Address update process completed.')
 
     return
+
+
+def format_pid(parcel_id):
+    """Takes a 14-digit parcel ID value and inserts hyphens to conform to the AMANDA property roll string format"""
+    arcpy.AddMessage("Formatting parcel ID with hyphens...")
+    return f"{parcel_id[:6]}-{parcel_id[6:9]}-{parcel_id[9:12]}-{parcel_id[12:]}"
 
 
 # TESTING PushAddressTool
