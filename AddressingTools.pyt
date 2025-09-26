@@ -251,7 +251,7 @@ class PushAddressTool:
         bia_fc = f"SCD_GDBA.PLANNING__PERMIT__BUILDING_INSPECTION_AREAS"
 
         # test mode
-        test_mode = True # change to True when testing in PyCharm
+        test_mode = False  # change to True when testing in PyCharm
 
         # double-check that the address layer has selected points
         if not test_mode:
@@ -277,8 +277,7 @@ class PushAddressTool:
         update_pid(address_lyr)
 
         # based on the PID for the selected addresses, populate records in AMANDA and get returned RSN value
-        # execute_amanda_sproc(self, server=server_name, database="SCD_Amanda_Prod", address_layer=address_lyr)
-        execute_amanda_sproc(self, server=server_name, database="SCD_Amanda_Test", address_layer=address_lyr)
+        execute_amanda_sproc(self, server=server_name, database="SCD_Amanda_Prod", address_layer=address_lyr)
         return
 
     def postExecute(self, parameters):
@@ -563,7 +562,7 @@ def execute_amanda_sproc(self, server, database, address_layer):
     with (arcpy.da.UpdateCursor(in_table=address_layer, field_names=address_field_list) as cursor):
         for row in cursor:
             try:
-                assessor_roll = format_pid(row[address_field_list.index("Parcel_ID")])  # add dashes to parcel ID value
+                assessor_roll = '' # This should be blank so that the Parcel ID isn't used here
                 params = [
                     row[address_field_list.index("House_Number")],
                     row[address_field_list.index("Prefix")],
@@ -674,3 +673,5 @@ def _test_execute():
 
 _test_execute()
 '''
+
+
