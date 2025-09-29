@@ -188,7 +188,8 @@ class PushAddressTool:
                             ,'PropGisId1': 'Parcel_ID'
                             ,'BuildingInspectionArea': 'BIA'
                             ,'PropX': 'X'
-                            ,'PropY': 'Y'}
+                            ,'PropY': 'Y'
+                            ,'PropComment': 'Conditions'}
 
     def getParameterInfo(self):
         """Define the tool parameters."""
@@ -585,6 +586,7 @@ def execute_amanda_sproc(self, server, database, address_layer):
                     assessor_roll,
                     row[address_field_list.index("created_date")],
                     row[address_field_list.index("last_edited_user")],
+                    row[address_field_list.index("Conditions")],
                     row[address_field_list.index("last_edited_date")],
                     row[address_field_list.index("Parcel_ID")],
                     row[address_field_list.index("X")],
@@ -598,7 +600,7 @@ def execute_amanda_sproc(self, server, database, address_layer):
                     "@PropHouse=?, @PropStreetPrefix=?, @PropStreet=?, @PropStreetType=?, @PropStreetDirection=?, "
                     "@PropUnitType=?, @PropUnit=?, @PropCity=?, @PropProvince=?, @PropPostal=?, "
                     "@StatusCode=?, @PropPlan=?, @PropLot=?, @PropBlock=?, @PropSubDivision=?, @PropSection=?, "
-                    "@PropTownship=?, @PropRange=?, @PropertyRoll=?, @DateCreated=?, @StampUser=?, "
+                    "@PropTownship=?, @PropRange=?, @PropertyRoll=?, @DateCreated=?, @StampUser=?, @propcomment=?, "
                     "@StampDate=?, @PropGisId1=?, @PropX=?, @PropY=?, @BuildingInspectionArea=?, "
                     "@PropertyRSN=@outRSN OUTPUT; "
                     "SELECT @outRSN AS RSN;"
@@ -642,7 +644,6 @@ def format_pid(parcel_id):
 
 
 # TESTING PushAddressTool
-'''
 class TestParameter:
     def __init__(self, value):
         self.valueAsText = value
@@ -655,11 +656,12 @@ class FakeMessages:
     def AddError(self, msg):
         print(f"[ERROR] {msg}")
 
+'''
 def _test_execute():
     amanda_server = 'DAG-AMANDA'
+    sde_env = 'PROD_TEST'
     address_fc = r'\\snoco\gis\plng\GDB_connections_PAG\SCD_GDBA\SCD_GDBA@SCD_GIS_PROD_TEST.sde\SCD_GDBA.ADDRESSING__Address_Points_PDS_TEST'
     address_lyr = arcpy.MakeFeatureLayer_management(address_fc, 'address_layer')
-    sde_env = 'PROD_TEST'
     test_params = [
         TestParameter(amanda_server),
         TestParameter(address_lyr),
@@ -673,5 +675,3 @@ def _test_execute():
 
 _test_execute()
 '''
-
-
